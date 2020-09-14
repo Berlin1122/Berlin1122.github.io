@@ -1,0 +1,153 @@
+### 基于Java的频次计算器
+
+**描述：**使用核心滑动窗口算法，可用于对请求的频次进行实时计算。
+
+**使用方法：**调用对象的addAccessTime()增加调用次数，调用getAccessFrequency()获取频次计算结果。
+
+**其他依赖**：guava 28.0
+
+代码如下：
+
+```java
+import com.google.common.collect.Range;
+import com.google.common.collect.RangeMap;
+import com.google.common.collect.TreeRangeMap;
+
+import java.util.BitSet;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * @Author ChenYulin
+ * @Date 2020/9/9
+ */
+public class FrequencyCalculator {
+
+	/**
+	 * 每个bit代表1毫秒，循环使用
+	 */
+	private BitSet bitLoop;
+
+	/**
+	 * 位集最后访问时间
+	 */
+	private long lastAccessTime;
+
+	/**
+	 * 位集最后访问的位置
+	 */
+	private int lastAccessIndex;
+
+	/**
+	 * 位集的bit数
+	 */
+	private int bitSize;
+
+	/**
+	 * 位集最大的访问索引
+	 */
+	private int maxIndex;
+
+	/**
+	 * 将位集分为均等的3块，使用数组记录每块的最后一次访问时间
+	 */
+	private long[] blockLastAccessTime = new long[3];
+
+	/**
+	 * key:位集每块的范围 value：块的索引（0、1、2）
+	 */
+	private RangeMap<Integer, Integer> range2Index = TreeRangeMap.create();
+
+	/**
+	 * key:块的索引（0、1、2）value:块的范围
+	 */
+	private Map<Integer, Range<Integer>> index2Range = new HashMap<>();
+
+	/**
+	 * 统计次数的时间间隔，单位：ms
+	 */
+	private long timeGap;
+
+	/**
+	 * e.g. 统计每秒执行多少次 FrequencyCalculator(TimeUnit.SECONDS,1)
+	 * @param timeUnit 统计的时间单位
+	 * @param duration 统计时间间隔
+	 */
+	public FrequencyCalculator(TimeUnit timeUnit, long duration){
+		this.timeGap = timeUnit.toMillis(duration);
+		this.bitSize = (int) timeGap * 3;
+		this.bitLoop = new BitSet(bitSize);
+		this.maxIndex = bitSize - 1;
+		range2Index.put(Range.closed(0, bitSize / 3 - 1), 0);
+		range2Index.put(Range.closed(bitSize / 3, bitSize / 3 * 2 - 1), 1);
+		range2Index.put(Range.closed(bitSize / 3 * 2, maxIndex), 2);
+		index2Range.put(0, Range.closed(0, bitSize / 3 - 1));
+		index2Range.put(1, Range.closed(bitSize / 3, bitSize / 3 * 2 - 1));
+		index2Range.put(2, Range.closed(bitSize / 3 * 2, maxIndex));
+	}
+
+	/**
+	 * 增加访问次数
+	 */
+	public void addAccessTimes() {
+		long currentTime = System.currentTimeMillis();
+		if (lastAccessTime == 0) {
+			lastAccessTime = currentTime;
+
+		}
+
+		int timeGap = (int) (currentTime - lastAccessTime);
+		int currentPosition = (lastAccessIndex + timeGap) % bitSize;
+		// 在使用每个块的时候都需要判断一下是否应该先执行清除操作，因为这里是循环使用
+		Integer curBlockIndex = range2Index.get(currentPosition);
+		Integer formerBlockIndex = (curBlockIndex - 1 + 3) % 3;
+		cleanDirtyBlock(curBlockIndex, currentTime);
+		cleanDirtyBlock(formerBlockIndex, currentTime);
+
+		bitLoop.set(currentPosition);
+		lastAccessIndex = currentPosition;
+		blockLastAccessTime[curBlockIndex] = currentTime;
+		lastAccessTime = currentTime;
+	}
+
+	/**
+	 * 清除已经使用过的脏块
+	 * 当需要对位集进行写操作时，需要确保待写的块不是上一轮使用过的脏块
+	 *
+	 * @param index       块的索引
+	 * @param currentTime 当前访问时间
+	 */
+	private void cleanDirtyBlock(int index, long currentTime) {
+		// 块还没用过不用清除
+		if (blockLastAccessTime[index] == 0) {
+			return;
+		}
+		if (currentTime - blockLastAccessTime[index] > bitSize / 3 * 2) {
+			Range<Integer> range = index2Range.get(index);
+			bitLoop.set(range.lowerEndpoint(), range.upperEndpoint(), false);
+		}
+	}
+
+	/**
+	 * 判断是否达到指定的访问上限
+	 */
+	public boolean reachedLimitTimes(int limit) {
+		return getAccessFrequency() >= limit;
+	}
+
+	/**
+	 * 获取访问频次
+	 */
+	public int getAccessFrequency() {
+		int fromIndex = lastAccessIndex - (int) timeGap;
+		if (fromIndex >= 0) {
+			return bitLoop.get(fromIndex, lastAccessIndex).cardinality();
+		} else {
+			fromIndex = fromIndex + maxIndex + 1;
+			return bitLoop.get(0, lastAccessIndex).cardinality() + bitLoop.get(fromIndex, maxIndex).cardinality();
+		}
+	}
+}
+```
+
