@@ -1,8 +1,6 @@
-### 基于Java的频次计算器
+**描述：**一个核心使用滑动窗口算法，用于对请求的频次进行实时计算的工具类
 
-**描述：**使用核心滑动窗口算法，可用于对请求的频次进行实时计算。
-
-**使用方法：**调用对象的addAccessTime()增加调用次数，调用getAccessFrequency()获取频次计算结果。
+**使用方法：**创建FrequencyCalculator对象，调用对象的addAccessTime()增加调用次数，调用getAccessFrequency()获取频次计算结果。
 
 **其他依赖**：guava 28.0
 
